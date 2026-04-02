@@ -1,14 +1,9 @@
 pipeline {
     agent any
 
-    options {
-        disableConcurrentBuilds()
-    }
-
     environment {
-        IMAGE_NAME = "swach/multibranch-flask-app"
-        GIT_USER   = "kastrokiran"
-        GIT_EMAIL  = "learnwithkastro@gmail.com"
+        DOCKER_IMAGE = "swach/multibranch-flask-app"
+        DOCKER_TAG = "build-${BUILD_NUMBER}"
     }
 
     stages {
@@ -20,50 +15,70 @@ pipeline {
         }
 
         stage('Build and Push Image') {
-            when { branch 'main' }
             steps {
                 script {
-                    env.IMAGE_TAG = "build-${BUILD_NUMBER}"
-
                     withCredentials([usernamePassword(
-                        credentialsId: 'dockerhub-creds',
+                        credentialsId: 'docker-creds',
                         usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
-                        sh '''
-                        docker build -t $IMAGE_NAME:$IMAGE_TAG .
-                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                        docker push $IMAGE_NAME:$IMAGE_TAG
-                        '''
+
+                        sh """
+                        docker build -t $DOCKER_IMAGE:$DOCKER_TAG .
+                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                        docker push $DOCKER_IMAGE:$DOCKER_TAG
+                        """
                     }
                 }
             }
         }
 
         stage('Update K8s Manifest') {
-            when { branch 'main' }
             steps {
                 script {
-                    withCredentials([usernamePassword(
-                        credentialsId: 'github-creds',
-                        usernameVariable: 'GIT_USERNAME',
-                        passwordVariable: 'GIT_TOKEN'
-                    )]) {
-                        sh '''
+                    withCredentials([string(credentialsId: 'github-token', variable: 'GIT_TOKEN')]) {
+
+                        sh """
                         set -e
-                        git config user.name "$GIT_USER"
-                        git config user.email "$GIT_EMAIL"
+
+                        git config user.name "swachand"
+                        git config user.email "your-email@example.com"
 
                         git fetch origin
                         git checkout main
                         git reset --hard origin/main
 
-                        sed -i "s|image:.*|image: $IMAGE_NAME:$IMAGE_TAG|" k8s/deployment.yml
+                        # Debug (optional)
+                        ls -R
+
+                        # Update image in deployment file
+                        sed -i 's|image:.*|image: $DOCKER_IMAGE:$DOCKER_TAG|' k8s/deployment.yml
 
                         git add k8s/deployment.yml
-                        git diff --cached --quiet || git commit -m "Updated image to $IMAGE_TAG"
-                        git push https://$GIT_USERNAME:$GIT_TOKEN@github.com/KastroVKiran/Multi-Branch-Prod.git main
-                        '''
+
+                        git commit -m "Updated image to $DOCKER_TAG" || echo "No changes to commit"
+
+                        git push origin main
+                        """
+                    }
+                }
+            }
+        }
+
+        // 🔥 OPTIONAL (Next Step - EKS Deployment)
+        stage('Deploy to EKS') {
+            steps {
+                script {
+                    withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG_FILE')]) {
+
+                        sh """
+                        export KUBECONFIG=$KUBECONFIG_FILE
+
+                        kubectl apply -f k8s/deployment.yml
+                        kubectl apply -f k8s/service.yml
+
+                        kubectl get pods
+                        """
                     }
                 }
             }
