@@ -71,25 +71,28 @@ pipeline {
                 }
             }
         }
-
         stage('Deploy to EKS') {
-            when { branch 'main' }
-            steps {
-                script {
-                    withCredentials([[
-                        $class: 'AmazonWebServicesCredentialsBinding',
-                        credentialsId: 'aws-creds'
-                    ]]) {
-                        sh '''
-                        aws eks update-kubeconfig --region $AWS_REGION --name $EKS_CLUSTER
-                        kubectl apply -f k8s/
-                        '''
-                    }
-                }
+    when { branch 'main' }
+    steps {
+        script {
+            withCredentials([usernamePassword(
+                credentialsId: 'aws-creds',
+                usernameVariable: 'AWS_ACCESS_KEY_ID',
+                passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+            )]) {
+                sh '''
+                export AWS_DEFAULT_REGION=us-east-1
+
+                aws eks update-kubeconfig \
+                  --region $AWS_DEFAULT_REGION \
+                  --name kastro-cluster
+
+                kubectl apply -f k8s/
+                '''
             }
         }
     }
-
+}
     post {
         success {
             echo "✅ Deployment Successful!"
