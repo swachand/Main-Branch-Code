@@ -6,10 +6,10 @@ pipeline {
     }
 
     environment {
-        IMAGE_NAME = "swach/multibranch-flask-app"
-        GIT_USER   = "swachand"
-        GIT_EMAIL  = "your-email@example.com"
-        AWS_REGION = "us-east-1"
+        IMAGE_NAME  = "swach/multibranch-flask-app"
+        GIT_USER    = "swachand"
+        GIT_EMAIL   = "your-email@example.com"
+        AWS_REGION  = "us-east-1"
         EKS_CLUSTER = "kastro-cluster"
     }
 
@@ -81,12 +81,22 @@ pipeline {
                         passwordVariable: 'AWS_SECRET_ACCESS_KEY'
                     )]) {
                         sh '''
+                        set -e
+
                         export AWS_DEFAULT_REGION=$AWS_REGION
 
+                        echo "🔍 Checking AWS Identity..."
+                        aws sts get-caller-identity
+
+                        echo "🔄 Updating kubeconfig..."
                         aws eks update-kubeconfig \
                           --region $AWS_DEFAULT_REGION \
                           --name $EKS_CLUSTER
 
+                        echo "🧪 Testing Kubernetes access..."
+                        kubectl get nodes
+
+                        echo "🚀 Deploying to cluster..."
                         kubectl apply -f k8s/
                         '''
                     }
