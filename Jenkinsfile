@@ -25,7 +25,6 @@ pipeline {
             when { branch 'main' }
             steps {
                 script {
-                    // ✅ FIXED TAG (no slash issue)
                     env.IMAGE_TAG = "build-${BUILD_NUMBER}"
 
                     withCredentials([usernamePassword(
@@ -71,28 +70,31 @@ pipeline {
                 }
             }
         }
+
         stage('Deploy to EKS') {
-    when { branch 'main' }
-    steps {
-        script {
-            withCredentials([usernamePassword(
-                credentialsId: 'aws-creds',
-                usernameVariable: 'AWS_ACCESS_KEY_ID',
-                passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-            )]) {
-                sh '''
-                export AWS_DEFAULT_REGION=us-east-1
+            when { branch 'main' }
+            steps {
+                script {
+                    withCredentials([usernamePassword(
+                        credentialsId: 'aws-creds',
+                        usernameVariable: 'AWS_ACCESS_KEY_ID',
+                        passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                    )]) {
+                        sh '''
+                        export AWS_DEFAULT_REGION=$AWS_REGION
 
-                aws eks update-kubeconfig \
-                  --region $AWS_DEFAULT_REGION \
-                  --name kastro-cluster
+                        aws eks update-kubeconfig \
+                          --region $AWS_DEFAULT_REGION \
+                          --name $EKS_CLUSTER
 
-                kubectl apply -f k8s/
-                '''
+                        kubectl apply -f k8s/
+                        '''
+                    }
+                }
             }
         }
     }
-}
+
     post {
         success {
             echo "✅ Deployment Successful!"
@@ -101,3 +103,4 @@ pipeline {
             echo "❌ Pipeline Failed!"
         }
     }
+}
