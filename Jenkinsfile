@@ -1,9 +1,16 @@
 pipeline {
     agent any
 
+    options {
+        disableConcurrentBuilds()
+    }
+
     environment {
-        DOCKER_IMAGE = "swach/multibranch-flask-app"
-        DOCKER_TAG = "build-${BUILD_NUMBER}"
+        IMAGE_NAME = "swach/multibranch-flask-app"
+        GIT_USER   = "swachand"
+        GIT_EMAIL  = "your-email@example.com"
+        AWS_REGION = "us-east-1"
+        EKS_CLUSTER = "kastro-cluster"
     }
 
     stages {
@@ -15,66 +22,79 @@ pipeline {
         }
 
         stage('Build and Push Image') {
+            when { branch 'main' }
             steps {
                 script {
+                    env.IMAGE_TAG = "jenkins-${JOB_NAME}-${BUILD_NUMBER}"
+
                     withCredentials([usernamePassword(
-                        credentialsId: 'docker-creds',
+                        credentialsId: 'dockerhub-creds',
                         usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
-
-                        sh """
-                        docker build -t $DOCKER_IMAGE:$DOCKER_TAG .
-                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                        docker push $DOCKER_IMAGE:$DOCKER_TAG
-                        """
+                        sh '''
+                        docker build -t $IMAGE_NAME:$IMAGE_TAG .
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        docker push $IMAGE_NAME:$IMAGE_TAG
+                        '''
                     }
                 }
             }
         }
 
         stage('Update K8s Manifest') {
-    steps {
-        script {
-            withCredentials([string(credentialsId: 'github-token', variable: 'GIT_TOKEN')]) {
-                sh '''
-                set -e
-
-                git config user.name "swachand"
-                git config user.email "your-email@example.com"
-
-                git fetch origin
-                git checkout main
-                git reset --hard origin/main
-
-                sed -i "s|image:.*|image: swach/multibranch-flask-app:${BUILD_TAG}|" k8s/deployment.yml
-
-                git add k8s/deployment.yml
-                git commit -m "Updated image to ${BUILD_TAG}"
-
-                git push https://${GIT_TOKEN}@github.com/swachand/Main-Branch-Code.git main
-                '''
-            }
-        }
-    }
-}
-        // 🔥 OPTIONAL (Next Step - EKS Deployment)
-        stage('Deploy to EKS') {
+            when { branch 'main' }
             steps {
                 script {
-                    withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG_FILE')]) {
+                    withCredentials([usernamePassword(
+                        credentialsId: 'github-creds',
+                        usernameVariable: 'GIT_USERNAME',
+                        passwordVariable: 'GIT_TOKEN'
+                    )]) {
+                        sh '''
+                        set -e
+                        git config user.name "$GIT_USER"
+                        git config user.email "$GIT_EMAIL"
 
-                        sh """
-                        export KUBECONFIG=$KUBECONFIG_FILE
+                        git fetch origin
+                        git checkout main
+                        git reset --hard origin/main
 
-                        kubectl apply -f k8s/deployment.yml
-                        kubectl apply -f k8s/service.yml
+                        sed -i "s|image:.*|image: $IMAGE_NAME:$IMAGE_TAG|" k8s/deployment.yml
 
-                        kubectl get pods
-                        """
+                        git add k8s/deployment.yml
+                        git diff --cached --quiet || git commit -m "Updated image to $IMAGE_TAG"
+                        git push https://$GIT_USERNAME:$GIT_TOKEN@github.com/swachand/Main-Branch-Code.git main
+                        '''
                     }
                 }
             }
+        }
+
+        stage('Deploy to EKS') {
+            when { branch 'main' }
+            steps {
+                script {
+                    withCredentials([[
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: 'aws-creds'
+                    ]]) {
+                        sh '''
+                        aws eks update-kubeconfig --region $AWS_REGION --name $EKS_CLUSTER
+                        kubectl apply -f k8s/
+                        '''
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Deployment Successful!"
+        }
+        failure {
+            echo "❌ Pipeline Failed!"
         }
     }
 }
