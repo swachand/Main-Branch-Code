@@ -6,7 +6,7 @@ pipeline {
     }
 
     environment {
-        IMAGE_NAME = "kastrov/multibranch-flask-app"
+        IMAGE_NAME = "swach/multibranch-flask-app"
         GIT_USER   = "kastrokiran"
         GIT_EMAIL  = "learnwithkastro@gmail.com"
     }
@@ -30,11 +30,11 @@ pipeline {
                         usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
-                        sh """
-                        docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                        sh '''
+                        docker build -t $IMAGE_NAME:$IMAGE_TAG .
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                        docker push ${IMAGE_NAME}:${IMAGE_TAG}
-                        """
+                        docker push $IMAGE_NAME:$IMAGE_TAG
+                        '''
                     }
                 }
             }
@@ -49,7 +49,7 @@ pipeline {
                         usernameVariable: 'GIT_USERNAME',
                         passwordVariable: 'GIT_TOKEN'
                     )]) {
-                        sh """
+                        sh '''
                         set -e
                         git config user.name "$GIT_USER"
                         git config user.email "$GIT_EMAIL"
@@ -58,12 +58,12 @@ pipeline {
                         git checkout main
                         git reset --hard origin/main
 
-                        sed -i "s|image:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|" k8s/deployment.yml
+                        sed -i "s|image:.*|image: $IMAGE_NAME:$IMAGE_TAG|" k8s/deployment.yml
 
                         git add k8s/deployment.yml
-                        git diff --cached --quiet || git commit -m "Updated image to ${IMAGE_TAG}"
-                        git push https://${GIT_USERNAME}:${GIT_TOKEN}@github.com/KastroVKiran/Multi-Branch-Prod.git main
-                        """
+                        git diff --cached --quiet || git commit -m "Updated image to $IMAGE_TAG"
+                        git push https://$GIT_USERNAME:$GIT_TOKEN@github.com/KastroVKiran/Multi-Branch-Prod.git main
+                        '''
                     }
                 }
             }
