@@ -25,7 +25,8 @@ pipeline {
             when { branch 'main' }
             steps {
                 script {
-                    env.IMAGE_TAG = "jenkins-${JOB_NAME}-${BUILD_NUMBER}"
+                    // ✅ FIXED TAG (no slash issue)
+                    env.IMAGE_TAG = "build-${BUILD_NUMBER}"
 
                     withCredentials([usernamePassword(
                         credentialsId: 'dockerhub-creds',
