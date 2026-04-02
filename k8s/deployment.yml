@@ -14,6 +14,6 @@ spec:
     spec:
       containers:
       - name: flask-app
-        image: swach/multibranch-flask-app:build-28
+        image: swach/multibranch-flask-app:build-29
         ports:
         - containerPort: 5000
