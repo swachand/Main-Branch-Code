@@ -1,11 +1,13 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: movie-app-service
+  name: flask-service
 spec:
-  type: LoadBalancer
+  type: NodePort
   selector:
-    app: movie-app
+    app: flask-app
   ports:
-    - port: 80
+    - protocol: TCP
+      port: 80
       targetPort: 5000
+      nodePort: 30008
