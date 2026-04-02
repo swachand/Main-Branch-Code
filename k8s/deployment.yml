@@ -14,6 +14,6 @@ spec:
     spec:
       containers:
       - name: flask-app
-        image: swach/multibranch-flask-app:jenkins-Movie-app-main-9
+        image: swach/multibranch-flask-app:jenkins-Movie-app-main-10
         ports:
         - containerPort: 5000
