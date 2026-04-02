@@ -34,37 +34,30 @@ pipeline {
         }
 
         stage('Update K8s Manifest') {
-            steps {
-                script {
-                    withCredentials([string(credentialsId: 'github-token', variable: 'GIT_TOKEN')]) {
+    steps {
+        script {
+            withCredentials([string(credentialsId: 'github-token', variable: 'GIT_TOKEN')]) {
+                sh '''
+                set -e
 
-                        sh """
-                        set -e
+                git config user.name "swachand"
+                git config user.email "your-email@example.com"
 
-                        git config user.name "swachand"
-                        git config user.email "your-email@example.com"
+                git fetch origin
+                git checkout main
+                git reset --hard origin/main
 
-                        git fetch origin
-                        git checkout main
-                        git reset --hard origin/main
+                sed -i "s|image:.*|image: swach/multibranch-flask-app:${BUILD_TAG}|" k8s/deployment.yml
 
-                        # Debug (optional)
-                        ls -R
+                git add k8s/deployment.yml
+                git commit -m "Updated image to ${BUILD_TAG}"
 
-                        # Update image in deployment file
-                        sed -i 's|image:.*|image: $DOCKER_IMAGE:$DOCKER_TAG|' k8s/deployment.yml
-
-                        git add k8s/deployment.yml
-
-                        git commit -m "Updated image to $DOCKER_TAG" || echo "No changes to commit"
-
-                        git push origin main
-                        """
-                    }
-                }
+                git push https://${GIT_TOKEN}@github.com/swachand/Main-Branch-Code.git main
+                '''
             }
         }
-
+    }
+}
         // 🔥 OPTIONAL (Next Step - EKS Deployment)
         stage('Deploy to EKS') {
             steps {
