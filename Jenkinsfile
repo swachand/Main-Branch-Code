@@ -71,39 +71,35 @@ pipeline {
             }
         }
 
-        stage('Deploy to EKS') {
-            when { branch 'main' }
-            steps {
-                script {
-                    withCredentials([usernamePassword(
-                        credentialsId: 'aws-creds',
-                        usernameVariable: 'AWS_ACCESS_KEY_ID',
-                        passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-                    )]) {
-                        sh '''
-                        set -e
+stage('Deploy to EKS') {
+    steps {
+        script {
+            withCredentials([[
+                $class: 'AmazonWebServicesCredentialsBinding',
+                credentialsId: 'aws-creds'
+            ]]) {
+                sh '''
+                set -e
 
-                        export AWS_DEFAULT_REGION=$AWS_REGION
+                export AWS_DEFAULT_REGION=us-east-1
 
-                        echo "🔍 Checking AWS Identity..."
-                        aws sts get-caller-identity
+                echo "🔍 Checking AWS Identity..."
+                aws sts get-caller-identity
 
-                        echo "🔄 Updating kubeconfig..."
-                        aws eks update-kubeconfig \
-                          --region $AWS_DEFAULT_REGION \
-                          --name $EKS_CLUSTER
+                echo "🔄 Updating kubeconfig..."
+                aws eks update-kubeconfig --region us-east-1 --name kastro-cluster
 
-                        echo "🧪 Testing Kubernetes access..."
-                        kubectl get nodes
+                echo "🧪 Testing Kubernetes access..."
+                kubectl get nodes
 
-                        echo "🚀 Deploying to cluster..."
-                        kubectl apply -f k8s/
-                        '''
-                    }
-                }
+                echo "🚀 Deploying to Kubernetes..."
+                kubectl apply -f k8s/deployment.yml
+                kubectl apply -f k8s/service.yml
+                '''
             }
         }
-    }
+    }   
+}
 
     post {
         success {
