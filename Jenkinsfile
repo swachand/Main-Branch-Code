@@ -126,7 +126,6 @@ pipeline {
             }
         }
     }
-}
     post {
         success {
             echo "✅ Deployment Successful!"
