@@ -91,43 +91,42 @@ pipeline {
         }
 
         stage('Deploy to EKS') {
-            when { branch 'main' }
-            steps {
-                script {
-                    withCredentials([[
-                        $class: 'AmazonWebServicesCredentialsBinding',
-                        credentialsId: 'aws-creds'
-                    ]]) {
-                        sh '''
-                        set -e
+    when { branch 'main' }
+    steps {
+        script {
+            withCredentials([usernamePassword(
+                credentialsId: 'aws-creds',
+                usernameVariable: 'AWS_ACCESS_KEY_ID',
+                passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+            )]) {
+                sh '''
+                set -e
 
-                        export AWS_DEFAULT_REGION=$AWS_REGION
+                export AWS_DEFAULT_REGION=$AWS_REGION
 
-                        echo "🔍 Checking AWS Identity..."
-                        aws sts get-caller-identity
+                echo "🔍 Checking AWS Identity..."
+                aws sts get-caller-identity
 
-                        echo "🔄 Updating kubeconfig..."
-                        aws eks update-kubeconfig --region $AWS_REGION --name $EKS_CLUSTER
+                echo "🔄 Updating kubeconfig..."
+                aws eks update-kubeconfig --region $AWS_REGION --name $EKS_CLUSTER
 
-                        echo "⏳ Waiting for cluster access..."
-                        sleep 10
+                echo "⏳ Waiting for cluster..."
+                sleep 10
 
-                        echo "🧪 Testing Kubernetes access..."
-                        kubectl get nodes
+                echo "🧪 Testing Kubernetes access..."
+                kubectl get nodes
 
-                        echo "🚀 Deploying to Kubernetes..."
-                        kubectl apply -f k8s/deployment.yml
-                        kubectl apply -f k8s/service.yml
+                echo "🚀 Deploying to Kubernetes..."
+                kubectl apply -f k8s/deployment.yml
+                kubectl apply -f k8s/service.yml
 
-                        echo "📊 Checking rollout status..."
-                        kubectl rollout status deployment/flask-app
-                        '''
-                    }
-                }
+                echo "📊 Checking rollout..."
+                kubectl rollout status deployment/flask-app
+                '''
             }
         }
     }
-
+}
     post {
         success {
             echo "✅ Deployment Successful!"
