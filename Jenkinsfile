@@ -3,6 +3,7 @@ pipeline {
 
     options {
         disableConcurrentBuilds()
+        timestamps()
     }
 
     environment {
@@ -33,9 +34,19 @@ pipeline {
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
                         sh '''
+                        set -e
+
+                        echo "🐳 Building Docker Image..."
                         docker build -t $IMAGE_NAME:$IMAGE_TAG .
+
+                        echo "🔐 Logging into DockerHub..."
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+
+                        echo "📤 Pushing Image..."
                         docker push $IMAGE_NAME:$IMAGE_TAG
+
+                        echo "🧹 Cleaning old images..."
+                        docker image prune -f
                         '''
                     }
                 }
@@ -53,6 +64,8 @@ pipeline {
                     )]) {
                         sh '''
                         set -e
+
+                        echo "🔧 Configuring Git..."
                         git config user.name "$GIT_USER"
                         git config user.email "$GIT_EMAIL"
 
@@ -60,46 +73,60 @@ pipeline {
                         git checkout main
                         git reset --hard origin/main
 
+                        echo "✏️ Updating image in deployment.yaml..."
                         sed -i "s|image:.*|image: $IMAGE_NAME:$IMAGE_TAG|" k8s/deployment.yml
 
                         git add k8s/deployment.yml
-                        git diff --cached --quiet || git commit -m "Updated image to $IMAGE_TAG"
-                        git push https://$GIT_USERNAME:$GIT_TOKEN@github.com/swachand/Main-Branch-Code.git main
+
+                        if git diff --cached --quiet; then
+                            echo "No changes to commit"
+                        else
+                            git commit -m "Updated image to $IMAGE_TAG"
+                            git push https://$GIT_USERNAME:$GIT_TOKEN@github.com/$GIT_USERNAME/Main-Branch-Code.git main
+                        fi
                         '''
                     }
                 }
             }
         }
 
-stage('Deploy to EKS') {
-    steps {
-        script {
-            withCredentials([[
-                $class: 'AmazonWebServicesCredentialsBinding',
-                credentialsId: 'aws-creds'
-            ]]) {
-                sh '''
-                set -e
+        stage('Deploy to EKS') {
+            when { branch 'main' }
+            steps {
+                script {
+                    withCredentials([[
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: 'aws-creds'
+                    ]]) {
+                        sh '''
+                        set -e
 
-                export AWS_DEFAULT_REGION=us-east-1
+                        export AWS_DEFAULT_REGION=$AWS_REGION
 
-                echo "🔍 Checking AWS Identity..."
-                aws sts get-caller-identity
+                        echo "🔍 Checking AWS Identity..."
+                        aws sts get-caller-identity
 
-                echo "🔄 Updating kubeconfig..."
-                aws eks update-kubeconfig --region us-east-1 --name kastro-cluster
+                        echo "🔄 Updating kubeconfig..."
+                        aws eks update-kubeconfig --region $AWS_REGION --name $EKS_CLUSTER
 
-                echo "🧪 Testing Kubernetes access..."
-                kubectl get nodes
+                        echo "⏳ Waiting for cluster access..."
+                        sleep 10
 
-                echo "🚀 Deploying to Kubernetes..."
-                kubectl apply -f k8s/deployment.yml
-                kubectl apply -f k8s/service.yml
-                '''
+                        echo "🧪 Testing Kubernetes access..."
+                        kubectl get nodes
+
+                        echo "🚀 Deploying to Kubernetes..."
+                        kubectl apply -f k8s/deployment.yml
+                        kubectl apply -f k8s/service.yml
+
+                        echo "📊 Checking rollout status..."
+                        kubectl rollout status deployment/flask-app
+                        '''
+                    }
+                }
             }
         }
-    }   
-}
+    }
 
     post {
         success {
@@ -107,6 +134,9 @@ stage('Deploy to EKS') {
         }
         failure {
             echo "❌ Pipeline Failed!"
+        }
+        always {
+            echo "📦 Build Number: ${BUILD_NUMBER}"
         }
     }
 }
